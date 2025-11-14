@@ -17,6 +17,15 @@ Clone this repo and copy the content under the folder
 which is the default location to be used for these scripts.
 simple command line to use arducam i2c protocol and retrieve camera modules low-level information 
 
+NOTE: it is mandatory to create /opt/arducam since the tool does save a mapping of all the csi devices
+using file:
+
+```
+/opt/arducam/arducam_i2c_map.json
+```
+
+if you change the platform setuo by adding/removing CSI cameras please delete this file and re-run the tool
+
 # usage
 Once installed you can use the tool in different ways.
 ## direct access to the i2c bus
