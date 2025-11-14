@@ -15,7 +15,7 @@ from i2c_tools import I2CDevice
 
 # Version
 VERSION_MJR = 1
-VERSION_MIN = 4
+VERSION_MIN = 5
 
 # Default mapping table path
 DEFAULT_MAPPING_PATH = "/opt/arducam/arducam_i2c_map.json"
@@ -131,7 +131,7 @@ def logging(text, level=Level.INFO):
     prefix = "[INFO]" if level == Level.INFO else "[WARNING]" if level == Level.WARNING else "[ERROR]"
     print(f"{prefix}: {text}")
 
-def enum_resolutions(camera, list_formats=False, list_formats_ext=False):
+def enum_resolutions(camera):
     index = 0
     resolutions = []
     while True:
@@ -141,8 +141,9 @@ def enum_resolutions(camera, list_formats=False, list_formats_ext=False):
             break
         width = camera.readReg(FORMAT_WIDTH_REG)
         height = camera.readReg(FORMAT_HEIGHT_REG)
+
         # Get max framerate from Framerate control
-        camera.writeReg(CTRL_INDEX_REG, 0)  # reset control index
+        camera.writeReg(CTRL_INDEX_REG, 0)
         max_fps = None
         ctrl_index = 0
         while True:
@@ -153,25 +154,52 @@ def enum_resolutions(camera, list_formats=False, list_formats_ext=False):
             if ctrl_id == 0x981906:  # Framerate
                 max_fps = camera.readReg(CTRL_MAX_REG)
                 break
-            ctrl_index +=1
+            ctrl_index += 1
+
         resolutions.append({"index": index, "width": width, "height": height, "max_fps": max_fps})
         index += 1
     return resolutions
 
+# -------------------------------
+# FIXED V4L2 OUTPUT (v1.5 update)
+# -------------------------------
 def list_formats(camera, extended=False):
+
+    # Read pixel format from camera (no hardcoding anymore)
+    camera.writeReg(PIXFORMAT_INDEX_REG, 0)
+    pix_type = camera.readReg(PIXFORMAT_TYPE_REG)
+    pix_order = camera.readReg(PIXFORMAT_ORDER_REG)
+
+    pix_name = pix_type_map.get(pix_type, "Unknown")
+
+    # Determine FOURCC
+    if pix_type in [0x18, 0x19, 0x1E]:
+        fourcc = yuv_order.get(pix_order, "YUYV")
+    elif pix_type in [0x2A, 0x2B, 0x2C]:
+        fourcc = raw_bayer_order.get(pix_order, "RGGB")
+    elif pix_type == 0x30:
+        fourcc = "MJPG"
+    else:
+        fourcc = "UNKN"
+
     resolutions = enum_resolutions(camera)
+
+    print("ioctl: VIDIOC_ENUM_FMT")
+    print("        Type: Video Capture\n")
+
     for res in resolutions:
         idx = res["index"]
         width = res["width"]
         height = res["height"]
         fps = res["max_fps"]
-        if not extended:
-            print(f"        [{idx}]: '{pix_type_map.get(0x1E, 'Unknown')}' (YUV422_8BIT)")
-        else:
-            print(f"        [{idx}]: '{pix_type_map.get(0x1E, 'Unknown')}' (YUV422_8BIT)")
+
+        print(f"        [{idx}]: '{fourcc}' ({pix_name})")
+
+        if extended:
             print(f"                Size: Discrete {width}x{height}")
             if fps:
-                print(f"                        Interval: Discrete 0.033s ({fps} fps)")
+                interval = 1.0 / fps
+                print(f"                        Interval: Discrete {interval:.3f}s ({fps:.3f} fps)")
 
 def main():
     parser = argparse.ArgumentParser(description="Arducam CLI")
@@ -202,6 +230,7 @@ def main():
         logging("Mapping table not found, please run arduino_i2c_detect.py first.", Level.ERROR)
         sys.exit(1)
 
+    # Determine devices to probe
     devices_to_probe = []
     if args.bus is not None:
         devices_to_probe.append({"bus": args.bus, "name": "manual"})
@@ -212,11 +241,11 @@ def main():
             sys.exit(1)
         devices_to_probe.append({"bus": mapping[dev_name]["bus"], "name": dev_name})
     else:
-        # Probe all devices in mapping
         for dev_name, info in mapping.items():
             if info:
                 devices_to_probe.append({"bus": info["bus"], "name": dev_name})
 
+    # Probe devices
     for dev in devices_to_probe:
         try:
             camera = PivarietyCamera(dev["bus"])
@@ -232,6 +261,7 @@ def main():
         device_id = camera.readReg(DEVICE_ID_REG)
         device_version = camera.readReg(DEVICE_VERSION_REG)
         sensor_id = camera.readReg(SENSOR_ID_REG)
+
         logging(f"Device ID: 0x{device_id:02X}")
         logging(f"Device Version: 0x{device_version:02X}")
         logging(f"Sensor ID: 0x{sensor_id:03X}")
@@ -242,15 +272,19 @@ def main():
             val = camera.readReg(PIXFORMAT_INDEX_REG)
             if val == NO_DATA_AVAILABLE:
                 break
+
             pix_type = camera.readReg(PIXFORMAT_TYPE_REG)
             bayer_order = camera.readReg(PIXFORMAT_ORDER_REG)
             lanes = camera.readReg(MIPI_LANES_REG)
+
             dtype = pix_type_map.get(pix_type, "Unknown")
             order = None
+
             if pix_type in [0x2A, 0x2B, 0x2C]:
                 order = raw_bayer_order.get(bayer_order, "Unknown")
             elif pix_type in [0x18, 0x19, 0x1E]:
                 order = yuv_order.get(bayer_order, "Unknown")
+
             if order:
                 logging(f"PixelFormat Type: {dtype}, Order: {order}, Lanes: {lanes}")
             else:
@@ -264,6 +298,7 @@ def main():
                 height = res["height"]
                 maxfps = res["max_fps"]
                 logging(f"index: {idx}, {width}x{height}")
+
                 # Controls
                 ctrl_index = 0
                 while True:
@@ -271,6 +306,7 @@ def main():
                     ctrl_id = camera.readReg(CTRL_ID_REG)
                     if ctrl_id == NO_DATA_AVAILABLE:
                         break
+
                     camera.writeReg(CTRL_VALUE_REG, 0)
                     wait_for_free()
                     max_val = camera.readReg(CTRL_MAX_REG)
@@ -278,8 +314,11 @@ def main():
                     def_val = camera.readReg(CTRL_DEF_REG)
                     logging(f"ID: 0x{ctrl_id:06X}, control_name: {ID_map.get(ctrl_id, 'Unknown')} MAX: {max_val}, MIN: {min_val}, DEF: {def_val}")
                     ctrl_index += 1
+
             pix_index += 1
+
         camera.writeReg(PIXFORMAT_INDEX_REG, 0)
 
 if __name__ == "__main__":
     main()
+
