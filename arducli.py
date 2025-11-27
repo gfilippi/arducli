@@ -30,7 +30,12 @@ STREAM_ON = (DEVICE_REG_BASE | 0x0000)
 DEVICE_VERSION_REG = (DEVICE_REG_BASE | 0x0001)
 SENSOR_ID_REG = (DEVICE_REG_BASE | 0x0002)
 DEVICE_ID_REG = (DEVICE_REG_BASE | 0x0003)
+FIRMWARE_SENSOR_ID_REG = (DEVICE_REG_BASE | 0x0005)
+UNIQUE_ID_REG = (DEVICE_REG_BASE | 0x0006)
 SYSTEM_IDLE_REG = (DEVICE_REG_BASE | 0x0007)
+SOFT_VERSION_LEN_REG = (DEVICE_REG_BASE | 0x00F0)
+SOFT_VERSION_INDEX_REG = (DEVICE_REG_BASE | 0x00F1)
+SOFT_VERSION_REG = (DEVICE_REG_BASE | 0x00F2)
 PIXFORMAT_INDEX_REG = (PIXFORMAT_REG_BASE | 0x0000)
 PIXFORMAT_TYPE_REG = (PIXFORMAT_REG_BASE | 0x0001)
 PIXFORMAT_ORDER_REG = (PIXFORMAT_REG_BASE | 0x0002)
@@ -201,6 +206,31 @@ def list_formats(camera, extended=False):
                 interval = 1.0 / fps
                 print(f"                        Interval: Discrete {interval:.3f}s ({fps:.3f} fps)")
 
+def get_software_fw_version(camera):
+    version_length = camera.readReg(SOFT_VERSION_LEN_REG) 
+    if version_length == NO_DATA_AVAILABLE or version_length > 255:
+        return "None"
+    
+    version = ""
+    for i in range(version_length):
+        camera.writeReg(SOFT_VERSION_INDEX_REG, i)
+        ch = camera.readReg(SOFT_VERSION_REG)
+        if ch > 255:
+            continue
+        version += chr(ch)
+    return version
+
+def parse_isp_fw_version(isp_fw_version):
+    isp_id = (isp_fw_version & 0xFFFF0000) >> 16
+    isp_id_high = (isp_id & 0xFF00) >> 8
+    isp_id_low = (isp_id & 0x00FF)
+    isp_fw_date = (isp_fw_version & 0xFFFF) 
+    isp_fw_year = isp_fw_date >> 9
+    isp_fw_month = (isp_fw_date >> 5) & 0x0F
+    isp_fw_day = isp_fw_date & 0x1F
+
+    return f"v{isp_id_high:x}.{isp_id_low:02x} 20{isp_fw_year:02d}/{isp_fw_month:02d}/{isp_fw_day:02d}"
+
 def main():
     parser = argparse.ArgumentParser(description="Arducam CLI")
     parser.add_argument("-b", "--bus", type=int, help="Specify I2C bus number")
@@ -260,11 +290,14 @@ def main():
         # Full info probe
         device_id = camera.readReg(DEVICE_ID_REG)
         device_version = camera.readReg(DEVICE_VERSION_REG)
-        sensor_id = camera.readReg(SENSOR_ID_REG)
+        sensor_id = camera.readReg(FIRMWARE_SENSOR_ID_REG)
+        isp_fw_version = camera.readReg(UNIQUE_ID_REG)
 
         logging(f"Device ID: 0x{device_id:02X}")
         logging(f"Device Version: 0x{device_version:02X}")
-        logging(f"Sensor ID: 0x{sensor_id:03X}")
+        logging(f"Sensor ID: 0x{sensor_id:04X}")
+        logging(f"ISP FW Version: {parse_isp_fw_version(isp_fw_version)}")
+        logging(f"Software FW Version: {get_software_fw_version(camera)}")
 
         pix_index = 0
         while True:
