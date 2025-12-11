@@ -27,6 +27,12 @@ using file:
 if you change the platform setuo by adding/removing CSI cameras please delete this file and re-run the tool
 
 # usage
+Upon installation run (once) the camera detection with the command:
+
+```
+/opt/arducam/ardu_i2c_detect.py -t /opt/arducam/arducam_i2c_map.json
+```
+
 Once installed you can use the tool in different ways.
 ## direct access to the i2c bus
 If you know the I2C numbering (for example number 1) for your camera module you can probe that device direclty like this:
