@@ -257,7 +257,7 @@ def main():
         with open(DEFAULT_MAPPING_PATH) as f:
             mapping = json.load(f)
     else:
-        logging("Mapping table not found, please run arduino_i2c_detect.py first.", Level.ERROR)
+        logging("Mapping table not found, please run ardu_i2c_detect.py first.", Level.ERROR)
         sys.exit(1)
 
     # Determine devices to probe

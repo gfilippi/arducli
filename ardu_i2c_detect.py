@@ -41,7 +41,7 @@ def trigger_sensor(video_dev):
     print(f"[+] Triggering {video_dev} via GStreamer ({NUM_BUFFERS} buffers)...")
     pipeline = [
         "gst-launch-1.0", "-q",
-        "v4l2src", f"device={video_dev}", f"num-buffers={NUM_BUFFERS}", "!", "fakesink"
+        "v4l2src", f"device={video_dev}", f"num-buffers={NUM_BUFFERS}", "!", "video/x-raw,format=YUY2" ,"!", "fakesink"
     ]
     try:
         subprocess.run(pipeline, check=True)
