@@ -8,6 +8,15 @@ information for remote debugging about sensor type and camera firmware version.
 
 # installation
 Your platform does need python and some extra python extension (smbus) to use I2C commands.
+
+If you do not have them installed by default you can get them this way:
+
+```
+wget https://bootstrap.pypa.io/get-pip.py
+python3 ./get-pip.py
+pip install smbus2
+```
+
 Clone this repo and copy the content under the folder
 
 ```
